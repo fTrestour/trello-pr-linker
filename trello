@@ -57,8 +57,12 @@ trello_ctx() {
         exit 1
     fi
     local list_id=$(filter_id_by_name "$lists")
+	echo "TRELLO_CURRENT_LIST_ID=$list_id" > $ctx_file
 
-    echo $list_id >$ctx_file
+  	if [[ "$1" == "--with-review" || "$1" == "-r" ]]; then
+		local review_list_id=$(filter_id_by_name "$lists" "Pick the review list")
+		echo "TRELLO_REVIEW_LIST_ID=$review_list_id" >> $ctx_file
+	fi
 
     local board=$(echo -E $boards | jq -r "map(select(.id == \"$board_id\"))")
     local name=$(echo -E $board | jq -r '.[].name')
@@ -73,20 +77,20 @@ trello_ctx() {
 
 load_ctx() {
 	if [ -f "$ctx_file" ]; then
-		cat $ctx_file
+		source $ctx_file
 	else
-		echo "No context found. Please run 'trello ctx' to set a board context" >&2
+		echo "No context found. Please run 'trello ctx' to set a context" >&2
 		exit 1
 	fi
 }
 
 trello_pr() {
-	local current_list_id=$(load_ctx)
+	load_ctx
 
 
     local tickets=$(curl -s --request GET \
       --url "https://api.trello.com/1/members/$trello_member/cards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN"  \
-      --header 'Accept: application/json' | jq "map(select(.idList == \"$current_list_id\"))" )
+      --header 'Accept: application/json' | jq "map(select(.idList == \"$TRELLO_CURRENT_LIST_ID\"))" )
     
     if [ "$(echo $tickets | jq length)" -eq 0 ]; then
         echo "No tickets found in the current list."
@@ -102,6 +106,14 @@ trello_pr() {
       --header 'Accept: application/json' \
       -H "Content-Type: application/json" \
       --data "{\"url\": \"$pr_url\"}"
+      
+    if [[ -n "$TRELLO_REVIEW_LIST_ID" && ("$1" == "--with-review" || "$1" == "-r") ]]; then
+        gum spin --spinner dot --title "Moving the ticket to review list..." -- curl -s --request PUT \
+			--url "https://api.trello.com/1/cards/$ticket_id?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN&idList=$TRELLO_REVIEW_LIST_ID" \
+			--header 'Accept: application/json' \
+			-H "Content-Type: application/json" \
+			--data "{\"url\": \"$pr_url\"}"
+    fi
 
     local url=$(echo -E $tickets | jq -r "map(select(.id == \"$ticket_id\")) | .[].url")
     echo "PR added to Trello card! Go check it out : $url"

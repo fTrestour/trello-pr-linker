@@ -40,3 +40,9 @@ The active list ID is saved in `~/.trelloctx`. This command prompts you to selec
 
 Links a pull request to a Trello card in the active list.
 It prompts you to select a ticket assigned to you from the active list, then requests the PR URL to associate with the ticket.
+
+#### `--with-review` or `-r`
+
+When used with the `trello ctx` command, this option allows you to set a review list in addition to the active list. You will be prompted to select a review list after selecting the active list. The review list ID is also saved in `~/.trelloctx`.
+
+When used with the `trello pr` command, this option moves the Trello card to the review list after linking the PR URL to the card.
