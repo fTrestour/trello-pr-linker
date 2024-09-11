@@ -16,6 +16,18 @@ filter_id_by_name() {
 	echo $selected_id
 }
 
+ensure_env_is_set() {
+    if [ -z "$TRELLO_API_KEY" ]; then
+        echo "Error: TRELLO_API_KEY is not set."
+        exit 1
+    fi
+
+    if [ -z "$TRELLO_TOKEN" ]; then
+        echo "Error: TRELLO_TOKEN is not set."
+        exit 1
+    fi
+}
+
 trello_ctx() {
 	local boards=$(curl -s --request GET \
 		--url "https://api.trello.com/1/members/$trello_member/boards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" \
@@ -72,6 +84,8 @@ trello_pr() {
 }
 
 if declare -f "trello_$1" >/dev/null; then
+    ensure_env_is_set
+
 	local func="trello_$1"
 	shift
 	"$func" "$@"
