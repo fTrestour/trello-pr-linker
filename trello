@@ -1,12 +1,15 @@
-#!/bin/zsh
+#!/usr/bin/env bash
 
-local trello_member="me"
-local ctx_file="$HOME/.trelloctx"
+set -e
+
 if [ -f .env ]; then
     echo "Loading environment variables from $PWD/.env"
     source .env
 fi
 
+
+trello_member="me"
+ctx_file="$HOME/.trelloctx"
 
 filter_id_by_name() {
 	local temp_file="./.find_by_name.temp"
@@ -107,7 +110,7 @@ trello_pr() {
 if declare -f "trello_$1" >/dev/null; then
     ensure_env_is_set
 
-	local func="trello_$1"
+	func="trello_$1"
 	shift
 	"$func" "$@"
 else
