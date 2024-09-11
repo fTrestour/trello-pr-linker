@@ -1,43 +1,42 @@
-# trello-pr-linker
+# Trello PR Linker
 
-A simple cli tool that lets you link a pr to a trello ticket from the command line
+A simple CLI tool to link a pull request to a Trello ticket directly from the command line.
 
 ## Usage
 
 ### Prerequisites
 
-Ensure you have the following environment variables set:
+Ensure the following environment variables are set:
 
 - `TRELLO_API_KEY`
 - `TRELLO_TOKEN`
 
-If there is a `.env` file in the same folder as the `trello` file, it will be sourced automatically.
+If a `.env` file exists in the same directory as the `trello` script, it will be automatically sourced.
 
-To get your trello API token
+To obtain your Trello API token:
 
-- Start by [creating a power-up into Trello](https://trello.com/power-ups/admin/new)
-- Once created copy the value of the API_KEY and click on `token` to generate a new token (you can ignore the secret)
+1. [Create a new power-up in Trello](https://trello.com/power-ups/admin/new).
+2. Copy the `API_KEY` value and click on `token` to generate a new token (the secret can be ignored).
 
-You must also make sure `jq` and `gum` are installed on your machine:
+Additionally, ensure `jq`, `glow`, and `gum` are installed on your machine:
 
 ```bash
 brew install jq glow gum
 ```
 
-### Install
+### Installation
 
-- Make sure the script is executable : `chmod +x ./trello`
-- Make sure the script is in your PATH: `export PATH=$(pwd)/trello:$PATH` (add it to your .bashrc or .zshrc file)
+1. Ensure the script is executable: `chmod +x ./trello`
+2. Add the script to your PATH: `export PATH=$(pwd)/trello:$PATH` (include this in your `.bashrc` or `.zshrc` file for persistence)
 
 ### Commands
 
 #### `trello ctx`
 
-Changes the current active list.
-The current active list id is stored in `~/.trelloctx`.
-It first allows you to select a board and then a list in the picked board.
+Switches the current active list.
+The active list ID is saved in `~/.trelloctx`. This command prompts you to select a board first, followed by a list within that board.
 
 #### `trello pr`
 
-Links a pull request to a Trello ticket in the current active list.
-It first allows you to select a ticket in the current list and then prompts you to provide the URL to the PR.
+Links a pull request to a Trello card in the active list.
+It prompts you to select a ticket assigned to you from the active list, then requests the PR URL to associate with the ticket.
