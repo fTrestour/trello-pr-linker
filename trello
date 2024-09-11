@@ -1,9 +1,5 @@
 #!/bin/zsh
 
-# This scripts needs the following env variables to be set:
-# - TRELLO_API_KEY
-# - TRELLO_TOKEN
-
 local trello_member="me"
 local ctx_file="$HOME/.trelloctx"
 
@@ -20,8 +16,6 @@ filter_id_by_name() {
 	echo $selected_id
 }
 
-# `trello ctx` changes the current active list id
-# The current active list id is stored in ~/.trelloctx
 trello_ctx() {
 	local boards=$(curl -s --request GET \
 		--url "https://api.trello.com/1/members/$trello_member/boards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" \
@@ -56,9 +50,6 @@ load_ctx() {
 	fi
 }
 
-# `trello pr` asks you to pick a ticket in the current list
-# and asks you to provide the URL to a PR
-# It then adds the PR in the chosen ticket
 trello_pr() {
 	local current_list_id=$(load_ctx)
 
