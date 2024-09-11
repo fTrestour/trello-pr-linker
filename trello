@@ -37,25 +37,35 @@ trello_ctx() {
 	local boards=$(curl -s --request GET \
 		--url "https://api.trello.com/1/members/$trello_member/boards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" \
 		--header 'Accept: application/json')
-	local board_id=$(filter_id_by_name "$boards")
+
+    if [ "$(echo $boards | jq length)" -eq 0 ]; then
+        echo "No boards found."
+        exit 1
+    fi
+    local board_id=$(filter_id_by_name "$boards")
 
 
-  local lists=$(curl -s --request GET \
-    --url "https://api.trello.com/1/boards/$board_id/lists?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" \
-    --header 'Accept: application/json')
-  local list_id=$(filter_id_by_name "$lists")
+    local lists=$(curl -s --request GET \
+        --url "https://api.trello.com/1/boards/$board_id/lists?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" \
+        --header 'Accept: application/json')
+        
+    if [ "$(echo $lists | jq length)" -eq 0 ]; then
+        echo "No lists found."
+        exit 1
+    fi
+    local list_id=$(filter_id_by_name "$lists")
 
-	echo $list_id >$ctx_file
+    echo $list_id >$ctx_file
 
-	local board=$(echo -E $boards | jq -r "map(select(.id == \"$board_id\"))")
-	local name=$(echo -E $board | jq -r '.[].name')
-	local url=$(echo -E $board | jq -r '.[].url')
+    local board=$(echo -E $boards | jq -r "map(select(.id == \"$board_id\"))")
+    local name=$(echo -E $board | jq -r '.[].name')
+    local url=$(echo -E $board | jq -r '.[].url')
 
-	local list=$(echo -E $lists | jq -r "map(select(.id == \"$list_id\"))")
-	local list_name=$(echo -E $list | jq -r '.[].name')
+    local list=$(echo -E $lists | jq -r "map(select(.id == \"$list_id\"))")
+    local list_name=$(echo -E $list | jq -r '.[].name')
 
-	echo "🔄 Switched to list $name|$list_name" | glow -
-  echo "🌐 URL: $url"
+    echo "🔄 Switched to list $name|$list_name" | glow -
+    echo "🌐 URL: $url"
 }
 
 load_ctx() {
@@ -71,21 +81,27 @@ trello_pr() {
 	local current_list_id=$(load_ctx)
 
 
-  local tickets=$(curl -s --request GET \
-    --url "https://api.trello.com/1/members/$trello_member/cards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN"  \
-    --header 'Accept: application/json' | jq "map(select(.idList == \"$current_list_id\"))" )
-  local ticket_id=$(filter_id_by_name "$tickets")
+    local tickets=$(curl -s --request GET \
+      --url "https://api.trello.com/1/members/$trello_member/cards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN"  \
+      --header 'Accept: application/json' | jq "map(select(.idList == \"$current_list_id\"))" )
+    
+    if [ "$(echo $tickets | jq length)" -eq 0 ]; then
+        echo "No tickets found in the current list."
+        exit 1
+    fi
 
-  local pr_url=$(gum input --placeholder "PR URL")
+    local ticket_id=$(filter_id_by_name "$tickets")
 
-  gum spin --spinner dot --title "Editing the ticket..." -- curl -s --request POST \
-    --url "https://api.trello.com/1/cards/$ticket_id/attachments?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" \
-    --header 'Accept: application/json' \
-    -H "Content-Type: application/json" \
-    --data "{\"url\": \"$pr_url\"}"
+    local pr_url=$(gum input --placeholder "PR URL")
 
-  local url=$(echo -E $tickets | jq -r "map(select(.id == \"$ticket_id\")) | .[].url")
-  echo "PR added to Trello card! Go check it out : $url"
+    gum spin --spinner dot --title "Editing the ticket..." -- curl -s --request POST \
+      --url "https://api.trello.com/1/cards/$ticket_id/attachments?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" \
+      --header 'Accept: application/json' \
+      -H "Content-Type: application/json" \
+      --data "{\"url\": \"$pr_url\"}"
+
+    local url=$(echo -E $tickets | jq -r "map(select(.id == \"$ticket_id\")) | .[].url")
+    echo "PR added to Trello card! Go check it out : $url"
 }
 
 if declare -f "trello_$1" >/dev/null; then
