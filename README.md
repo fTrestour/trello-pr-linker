@@ -11,6 +11,8 @@ Ensure you have the following environment variables set:
 - `TRELLO_API_KEY`
 - `TRELLO_TOKEN`
 
+If there is a `.env` file in the same folder as the `trello` file, it will be sourced automatically.
+
 To get your trello API token
 
 - Start by [creating a power-up into Trello](https://trello.com/power-ups/admin/new)
