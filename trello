@@ -1,0 +1,90 @@
+#!/bin/zsh
+
+# This scripts needs the following env variables to be set:
+# - TRELLO_API_KEY
+# - TRELLO_TOKEN
+
+local trello_member="me"
+local ctx_file="$HOME/.trelloctx"
+
+filter_id_by_name() {
+	local temp_file="./.find_by_name.temp"
+
+	echo -E $1 | jq -r 'map(.name) | join("\n")' >$temp_file
+	local selected_name=$(cat $temp_file | gum filter --limit 1)
+	local selected=$(echo -E $1 | jq "map(select(.name == \"$selected_name\"))")
+	local selected_id=$(echo -E $selected | jq -r '.[].id')
+
+	rm $temp_file
+
+	echo $selected_id
+}
+
+# `trello ctx` changes the current active list id
+# The current active list id is stored in ~/.trelloctx
+trello_ctx() {
+	local boards=$(curl -s --request GET \
+		--url "https://api.trello.com/1/members/$trello_member/boards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" \
+		--header 'Accept: application/json')
+	local board_id=$(filter_id_by_name "$boards")
+
+
+  local lists=$(curl -s --request GET \
+    --url "https://api.trello.com/1/boards/$board_id/lists?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" \
+    --header 'Accept: application/json')
+  local list_id=$(filter_id_by_name "$lists")
+
+	echo $list_id >$ctx_file
+
+	local board=$(echo -E $boards | jq -r "map(select(.id == \"$board_id\"))")
+	local name=$(echo -E $board | jq -r '.[].name')
+	local url=$(echo -E $board | jq -r '.[].url')
+
+	local list=$(echo -E $lists | jq -r "map(select(.id == \"$list_id\"))")
+	local list_name=$(echo -E $list | jq -r '.[].name')
+
+	echo "🔄 Switched to list $name|$list_name" | glow -
+  echo "🌐 URL: $url"
+}
+
+load_ctx() {
+	if [ -f "$ctx_file" ]; then
+		cat $ctx_file
+	else
+		echo "No context found. Please run 'trello ctx' to set a board context" >&2
+		exit 1
+	fi
+}
+
+# `trello pr` asks you to pick a ticket in the current list
+# and asks you to provide the URL to a PR
+# It then adds the PR in the chosen ticket
+trello_pr() {
+	local current_list_id=$(load_ctx)
+
+
+  local tickets=$(curl -s --request GET \
+    --url "https://api.trello.com/1/members/$trello_member/cards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN"  \
+    --header 'Accept: application/json' | jq "map(select(.idList == \"$current_list_id\"))" )
+  local ticket_id=$(filter_id_by_name "$tickets")
+
+  local pr_url=$(gum input --placeholder "PR URL")
+
+  gum spin --spinner dot --title "Editing the ticket..." -- curl -s --request POST \
+    --url "https://api.trello.com/1/cards/$ticket_id/attachments?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" \
+    --header 'Accept: application/json' \
+    -H "Content-Type: application/json" \
+    --data "{\"url\": \"$pr_url\"}"
+
+  local url=$(echo -E $tickets | jq -r "map(select(.id == \"$ticket_id\")) | .[].url")
+  echo "PR added to Trello card! Go check it out : $url"
+}
+
+if declare -f "trello_$1" >/dev/null; then
+	local func="trello_$1"
+	shift
+	"$func" "$@"
+else
+	echo "$1 is not a valid subcommand of trello" >&2
+	exit 1
+fi
