@@ -7,125 +7,154 @@ if [ -f .env ]; then
     source .env
 fi
 
-
 trello_member="me"
 ctx_file="$HOME/.trelloctx"
 
 filter_id_by_name() {
-	local temp_file="./.find_by_name.temp"
+    local data=$1
+    local prompt=$2
+    local error_msg=$3
 
-	echo -E $1 | jq -r 'map(.name) | join("\n")' >$temp_file
-	local selected_name=$(cat $temp_file | gum filter --limit 1)
-	local selected=$(echo -E $1 | jq "map(select(.name == \"$selected_name\"))")
-	local selected_id=$(echo -E $selected | jq -r '.[].id')
+    local temp_file=$(mktemp)
+    echo -E "$data" | jq -r 'map(.name) | join("\n")' >"$temp_file"
+    selected_name=$(cat "$temp_file" | gum filter --limit 1 --header "$prompt" )
+    rm "$temp_file"
 
-	rm $temp_file
+    local selected=$(echo -E "$data" | jq "map(select(.name == \"$selected_name\"))")
+    local selected_id=$(echo -E "$selected" | jq -r '.[].id')
 
-	echo $selected_id
+    echo "$selected_id"
 }
 
 ensure_env_is_set() {
     if [ -z "$TRELLO_API_KEY" ]; then
-        echo "Error: TRELLO_API_KEY is not set."
+        echo "Error: TRELLO_API_KEY is not set.\nPlease set the TRELLO_API_KEY environment variable or set it in .env file and try again."
         exit 1
     fi
 
     if [ -z "$TRELLO_TOKEN" ]; then
-        echo "Error: TRELLO_TOKEN is not set."
+        echo "Error: TRELLO_TOKEN is not set.\nPlease set the TRELLO_TOKEN environment variable or set it in .env file and try again."
         exit 1
     fi
+}
+
+make_request() {
+
+    local url=$1
+    local response=$(curl -s --request GET --url "$url" --header 'Accept: application/json')
+    if [ $? -ne 0 ]; then
+        echo "Error: Failed to fetch data from $url"
+        return 1
+    fi
+    echo "$response"
 }
 
 trello_ctx() {
-	local boards=$(curl -s --request GET \
-		--url "https://api.trello.com/1/members/$trello_member/boards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" \
-		--header 'Accept: application/json')
-
-    if [ "$(echo $boards | jq length)" -eq 0 ]; then
-        echo "No boards found."
+    local boards=$(make_request "https://api.trello.com/1/members/$trello_member/boards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN")
+    if [ "$(echo "$boards" | jq length)" -eq 0 ]; then
+        echo "Aborting: No boards found. Create a board in Trello and retry."
         exit 1
     fi
-    local board_id=$(filter_id_by_name "$boards")
 
-
-    local lists=$(curl -s --request GET \
-        --url "https://api.trello.com/1/boards/$board_id/lists?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" \
-        --header 'Accept: application/json')
-        
-    if [ "$(echo $lists | jq length)" -eq 0 ]; then
-        echo "No lists found."
+    local board_id=$(filter_id_by_name "$boards" "Pick a board:" "No board selected.")
+    if [ -z "$board_id" ]; then
+        echo "Aborting: No board selected."
         exit 1
     fi
-    local list_id=$(filter_id_by_name "$lists")
-	echo "TRELLO_CURRENT_LIST_ID=$list_id" > $ctx_file
 
-  	if [[ "$1" == "--with-review" || "$1" == "-r" ]]; then
-		local review_list_id=$(filter_id_by_name "$lists" "Pick the review list")
-		echo "TRELLO_REVIEW_LIST_ID=$review_list_id" >> $ctx_file
-	fi
+    local board=$(echo -E "$boards" | jq -r "map(select(.id == \"$board_id\"))")
+    local name=$(echo -E "$board" | jq -r '.[].name')
+    local url=$(echo -E "$board" | jq -r '.[].url')
 
-    local board=$(echo -E $boards | jq -r "map(select(.id == \"$board_id\"))")
-    local name=$(echo -E $board | jq -r '.[].name')
-    local url=$(echo -E $board | jq -r '.[].url')
+    local lists=$(make_request "https://api.trello.com/1/boards/$board_id/lists?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN")
+    if [ "$(echo "$lists" | jq length)" -eq 0 ]; then
+        echo "Aborting: No lists found in the selected board. Create a list in the board and retry."
+        exit 1
+    fi
 
-    local list=$(echo -E $lists | jq -r "map(select(.id == \"$list_id\"))")
-    local list_name=$(echo -E $list | jq -r '.[].name')
+    local list_id=$(filter_id_by_name "$lists" "Pick the list that contains ongoing tickets:" "No list selected.")
+    if [ -z "$list_id" ]; then
+        echo "Aborting: No list selected."
+        exit 1
+    fi
 
-    echo "🔄 Switched to list $name|$list_name" | glow -
-    echo "🌐 URL: $url"
+    local list=$(echo -E "$lists" | jq -r "map(select(.id == \"$list_id\"))")
+    local list_name=$(echo -E "$list" | jq -r '.[].name')
+
+    echo "TRELLO_CURRENT_LIST_ID=$list_id" > "$ctx_file"
+    echo "Switched to list $name|$list_name"
+
+    if [[ "$1" == "--with-review" || "$1" == "-r" ]]; then
+        local review_list_id=$(filter_id_by_name "$lists" "Pick the review list:" "No review list selected.")
+        if [ -z "$review_list_id" ]; then
+            echo "Aborting: No review list selected."
+            exit 1
+        fi
+
+        local review_list=$(echo -E "$lists" | jq -r "map(select(.id == \"$review_list_id\"))")
+        local review_list_name=$(echo -E "$review_list" | jq -r '.[].name')
+
+        echo "TRELLO_REVIEW_LIST_ID=$review_list_id" >> "$ctx_file"
+        echo "Review list set to: $name|$review_list_name" 
+    fi
+
+    echo "URL: $url"
 }
 
 load_ctx() {
-	if [ -f "$ctx_file" ]; then
-		source $ctx_file
-	else
-		echo "No context found. Please run 'trello ctx' to set a context" >&2
-		exit 1
-	fi
+    if [ -f "$ctx_file" ]; then
+        source "$ctx_file"
+    else
+        echo "No context found. Please run `trello ctx` to set a context" >&2
+        exit 1
+    fi
 }
 
 trello_pr() {
-	load_ctx
+    load_ctx
 
-
-    local tickets=$(curl -s --request GET \
-      --url "https://api.trello.com/1/members/$trello_member/cards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN"  \
-      --header 'Accept: application/json' | jq "map(select(.idList == \"$TRELLO_CURRENT_LIST_ID\"))" )
-    
-    if [ "$(echo $tickets | jq length)" -eq 0 ]; then
-        echo "No tickets found in the current list."
+    local tickets=$(make_request "https://api.trello.com/1/members/$trello_member/cards?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" | jq "map(select(.idList == \"$TRELLO_CURRENT_LIST_ID\"))")
+    if [ "$(echo "$tickets" | jq length)" -eq 0 ]; then
+        echo "Error: No tickets found in the current list. Create a ticket in the current list and retry."
         exit 1
     fi
 
-    local ticket_id=$(filter_id_by_name "$tickets")
+    local ticket_id=$(filter_id_by_name "$tickets" "Pick a ticket to link the PR to:" "No ticket selected.")
+    if [ -z "$ticket_id" ]; then
+        echo "Aborting: No ticket selected."
+        exit 1
+    fi
 
     local pr_url=$(gum input --placeholder "PR URL")
+    if [ -z "$pr_url" ]; then
+        echo "Aborting: No PR URL provided."
+        exit 1
+    fi
 
-    gum spin --spinner dot --title "Editing the ticket..." -- curl -s --request POST \
+    gum spin --spinner dot --title "Linking the PR to the ticket..." -- curl -s --request POST \
       --url "https://api.trello.com/1/cards/$ticket_id/attachments?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN" \
       --header 'Accept: application/json' \
       -H "Content-Type: application/json" \
       --data "{\"url\": \"$pr_url\"}"
-      
+
     if [[ -n "$TRELLO_REVIEW_LIST_ID" && ("$1" == "--with-review" || "$1" == "-r") ]]; then
         gum spin --spinner dot --title "Moving the ticket to review list..." -- curl -s --request PUT \
-			--url "https://api.trello.com/1/cards/$ticket_id?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN&idList=$TRELLO_REVIEW_LIST_ID" \
-			--header 'Accept: application/json' \
-			-H "Content-Type: application/json" \
-			--data "{\"url\": \"$pr_url\"}"
+            --url "https://api.trello.com/1/cards/$ticket_id?key=$TRELLO_API_KEY&token=$TRELLO_TOKEN&idList=$TRELLO_REVIEW_LIST_ID" \
+            --header 'Accept: application/json' \
+            -H "Content-Type: application/json" 
     fi
 
-    local url=$(echo -E $tickets | jq -r "map(select(.id == \"$ticket_id\")) | .[].url")
+    local url=$(echo -E "$tickets" | jq -r "map(select(.id == \"$ticket_id\")) | .[].url")
     echo "PR added to Trello card! Go check it out : $url"
 }
 
 if declare -f "trello_$1" >/dev/null; then
     ensure_env_is_set
 
-	func="trello_$1"
-	shift
-	"$func" "$@"
+    func="trello_$1"
+    shift
+    "$func" "$@"
 else
-	echo "$1 is not a valid subcommand of trello" >&2
-	exit 1
+    echo "$1 is not a valid subcommand of trello" >&2
+    exit 1
 fi

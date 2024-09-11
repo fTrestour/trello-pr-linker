@@ -18,10 +18,10 @@ To obtain your Trello API token:
 1. [Create a new power-up in Trello](https://trello.com/power-ups/admin/new).
 2. Copy the `API_KEY` value and click on `token` to generate a new token (the secret can be ignored).
 
-Additionally, ensure `jq`, `glow`, and `gum` are installed on your machine:
+Additionally, ensure `jq` and `gum` are installed on your machine:
 
 ```bash
-brew install jq glow gum
+brew install jq gum
 ```
 
 ### Installation
